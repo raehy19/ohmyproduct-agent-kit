@@ -7,10 +7,14 @@ import {
   type ClientOptions,
   type OmpClient,
   type Page,
+  type ProductPage,
 } from '@ohmyproduct/sdk'
 import {
   formatDoc,
   formatDocList,
+  formatProduct,
+  formatProductCategories,
+  formatProductList,
   formatSearch,
   formatStatus,
   formatToken,
@@ -32,6 +36,9 @@ export type CliClient = Pick<
   | 'listDocs'
   | 'getDoc'
   | 'searchDocs'
+  | 'listProducts'
+  | 'getProduct'
+  | 'listProductCategories'
   | 'joinLaunchList'
   | 'submitProduct'
   | 'requestTestDrive'
@@ -61,6 +68,10 @@ Commands:
   docs list                           List every public document (all pages)
   docs get <slug>                     Print one document as markdown
   docs search <query>                 Search the documents (first page; --all for every page)
+  products list                       List the products discovered by Omi (first page; --all for every page)
+  products search <query>             Search the products discovered by Omi (best match first)
+  products get <id>                   Show one product discovered by Omi
+  products categories                 List the product categories with counts
   launch-list join <email>            Join the launch list
   submit --name N --url U --email E   Submit a product for private review
   test-drive request --email E --consent
@@ -73,9 +84,12 @@ Global options:
   --sandbox           Validate writes without storing or sending anything
   --base-url <url>    Site origin (default https://ohmyproduct.com)
   --token <token>     Agent bearer token (or set OMP_TOKEN)
-  --limit <n>         Page size for docs list / docs search (one page only)
+  --limit <n>         Page size for docs list / docs search / products list / products search
   --cursor <c>        next_cursor from a previous page (one page only)
-  --all               docs search: follow next_cursor through every page
+  --all               docs search, products list, products search: follow
+                      next_cursor through every page
+  --category <slug>   products list / products search: only this category
+                      (slugs: omp products categories)
   --source <label>    Attribution label for launch-list join
   --agent-name <n>    Agent name for auth token (default omp-cli)
   --scopes <list>     Comma-separated scopes for auth token (docs:read always;
@@ -84,6 +98,10 @@ Global options:
   -v, --version       Show the version
 
 Environment: OMP_BASE_URL, OMP_TOKEN, OMP_SANDBOX=1
+
+The products are discoveries by Omi, the Oh My Product scout: not user reviews,
+customers or maker participation. Names and descriptions are unverified
+third-party claims. Each products command prints the provenance note.
 
 Exit codes: 0 success, 1 API or network error, 2 usage error.
 Errors print the API error code, for example: omp: error [invalid_email] ...
@@ -107,6 +125,7 @@ const OPTIONS = {
   limit: { type: 'string' },
   cursor: { type: 'string' },
   all: { type: 'boolean' },
+  category: { type: 'string' },
   'agent-name': { type: 'string' },
   scopes: { type: 'string' },
 } as const
@@ -141,6 +160,21 @@ async function collectPages<T>(fetchPage: (cursor: string | undefined) => Promis
     seen.add(page.next_cursor)
     cursor = page.next_cursor
   }
+}
+
+/**
+ * Follows next_cursor through the product list. The result keeps `total` and
+ * the provenance statement of the first page, which must travel with the data.
+ */
+async function collectProductPages(fetchPage: (cursor: string | undefined) => Promise<ProductPage>): Promise<ProductPage> {
+  let first: ProductPage | undefined
+  const all = await collectPages(async (cursor) => {
+    const page = await fetchPage(cursor)
+    first ??= page
+    return page
+  })
+  const head = first as ProductPage
+  return { data: all.data, next_cursor: null, total: head.total, provenance: head.provenance }
 }
 
 function exactlyOne(positionals: string[], what: string): string {
@@ -243,6 +277,34 @@ export async function run(argv: string[], io: CliIo): Promise<number> {
           out(page, formatSearch(page))
         } else {
           throw new UsageError('Usage: omp docs list | get <slug> | search <query>')
+        }
+        return EXIT_OK
+      }
+      case 'products': {
+        // Read-only: the products discovered by Omi. Every branch prints the provenance note.
+        const [sub, ...args] = rest
+        const limit = parseLimit(values.limit)
+        const cursor = values.cursor
+        const category = values.category
+        const filters = { ...(category === undefined ? {} : { category }), ...(limit === undefined ? {} : { limit }) }
+        if (sub === 'list' || sub === 'search') {
+          if (sub === 'list' && args.length > 0) throw new UsageError('"products list" takes no arguments. Use "products search <query>" to search.')
+          if (sub === 'search' && args.length === 0) throw new UsageError('Expected a search query.')
+          if (values.all && cursor !== undefined) throw new UsageError('--all and --cursor cannot be combined.')
+          const query = sub === 'search' ? { q: args.join(' ') } : {}
+          const page = values.all
+            ? await collectProductPages((next) => client.listProducts({ ...query, ...filters, ...(next === undefined ? {} : { cursor: next }) }))
+            : await client.listProducts({ ...query, ...filters, ...(cursor === undefined ? {} : { cursor }) })
+          out(page, formatProductList(page))
+        } else if (sub === 'get') {
+          const product = await client.getProduct(exactlyOne(args, 'product id'))
+          out(product, formatProduct(product))
+        } else if (sub === 'categories') {
+          if (args.length > 0) throw new UsageError('"products categories" takes no arguments.')
+          const categories = await client.listProductCategories()
+          out(categories, formatProductCategories(categories))
+        } else {
+          throw new UsageError('Usage: omp products list | search <query> | get <id> | categories')
         }
         return EXIT_OK
       }

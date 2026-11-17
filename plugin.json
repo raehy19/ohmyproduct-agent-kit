@@ -2,7 +2,7 @@
   "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
   "name": "ohmyproduct",
   "version": "0.1.0",
-  "description": "Skills and hosted MCP servers for the Oh My Product public API: read the docs, check launch status, join the launch list, submit a product, request a Test Drive.",
+  "description": "Skills and hosted MCP servers for the Oh My Product public API: read the docs, check launch status, find products discovered by Omi, join the launch list, submit a product, request a Test Drive.",
   "author": {
     "name": "Oh My Product",
     "url": "https://ohmyproduct.com"

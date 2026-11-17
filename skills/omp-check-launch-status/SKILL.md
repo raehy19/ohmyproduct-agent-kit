@@ -35,14 +35,15 @@ you remember.
 
    - `phase: "closed_beta"` and `participation_open: false` mean the product is
      not open to the public. People can join the launch list, submit a product
-     for private review, or request a Test Drive. They cannot browse a catalog
-     or create accounts.
+     for private review, or request a Test Drive. They cannot browse product
+     pages or create accounts.
    - `launch_date: null` means no date has been announced. Say "coming soon".
      Never state or estimate a date.
    - `counts.discovered_products` counts products found by Omi, the site's
      product scout. They are not maker submissions, customers or reviews.
-     Report it as a count, not as a list, and mention `measured_at` when the
-     age of the number matters.
+     It is the size of the published list (`GET /api/v1/products`); mention
+     `measured_at` when the age of the number matters. To read the products
+     themselves, use the `omp-find-products` skill.
 
 3. Tell the user what you read and when you read it. If the call fails, say the
    status is unknown. Do not fall back to a guess.

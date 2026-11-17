@@ -69,6 +69,9 @@ const readInputs = {
   listDocs: [{ limit: 2, cursor: 'c1' }],
   getDoc: ['first-users'],
   searchDocs: ['beta testers', { limit: 5, cursor: 'c1' }],
+  listProducts: [{ limit: 2, cursor: 'c1', category: 'dev-data', q: 'web scraping' }],
+  getProduct: ['crawl4ai-434b6c'],
+  listProductCategories: [],
   getAgentIdentity: [],
   getAgentAuth: [],
   describeAgentIdentityEndpoint: [],
@@ -93,7 +96,7 @@ test('each SDK method requests the documented method and path, with a body the s
     assert.equal(seen.length, 1, id)
 
     const { method, path, op } = specOperations[id]
-    const expectedPath = path.replace('{slug}', encodeURIComponent('first-users'))
+    const expectedPath = path.replace('{slug}', encodeURIComponent('first-users')).replace('{id}', encodeURIComponent('crawl4ai-434b6c'))
     assert.equal(seen[0].url.origin, new URL(ORIGIN).origin, id)
     assert.equal(seen[0].url.pathname, expectedPath, id)
     assert.equal(seen[0].init.method, method, id)
@@ -117,6 +120,27 @@ test('each SDK method requests the documented method and path, with a body the s
       assert.equal(seen[0].init.body, undefined, id)
     }
   }
+})
+
+test('the Product type is the field allowlist of the document, and every product response carries provenance', () => {
+  const schemaOf = (id) => specOperations[id].op.responses['200'].content['application/json'].schema
+  const PRODUCT_KEYS = ['category', 'discovered_on', 'id', 'name', 'tagline', 'tags', 'url']
+  const item = schemaOf('listProducts').properties.data.items
+  assert.deepEqual(Object.keys(item.properties).sort(), PRODUCT_KEYS)
+  assert.equal(item.additionalProperties, false)
+  assert.deepEqual(schemaOf('listProducts').required, ['data', 'next_cursor', 'total', 'provenance'])
+  assert.deepEqual(Object.keys(schemaOf('getProduct').properties).sort(), [...PRODUCT_KEYS, 'provenance'].sort())
+  assert.deepEqual(schemaOf('listProductCategories').required, ['data', 'total', 'provenance'])
+  for (const id of ['listProducts', 'getProduct', 'listProductCategories']) {
+    const provenance = schemaOf(id).properties.provenance
+    assert.deepEqual(Object.keys(provenance.properties).sort(), ['as_of', 'note', 'source'], id)
+    assert.equal(provenance.properties.source.const, 'omi_discovery', id)
+  }
+  // The query parameters the SDK's ListProductsOptions sends.
+  const query = specOperations.listProducts.op.parameters.filter((p) => p.in === 'query')
+  assert.deepEqual(query.map((p) => p.name).sort(), ['category', 'cursor', 'limit', 'q'])
+  assert.equal(query.find((p) => p.name === 'limit').schema.maximum, 100)
+  assert.ok(query.every((p) => p.required === false))
 })
 
 test('sandbox header is sent exactly on the operations the document marks x-sandbox', async () => {

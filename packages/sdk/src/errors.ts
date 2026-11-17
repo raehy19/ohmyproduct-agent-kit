@@ -23,6 +23,7 @@ export const API_ERROR_CODES = [
   'insufficient_scope',
   'not_found',
   'doc_not_found',
+  'product_not_found',
   'version_not_found',
   'method_not_allowed',
   'launch_open',

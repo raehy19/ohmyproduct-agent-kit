@@ -20,9 +20,10 @@ newer (or any runtime with `fetch` and `AbortController`).
 
 ## What the API covers
 
-Oh My Product is in closed beta. The public API only exposes public documents,
-the launch status, and three public write actions. There is no catalog, post,
-profile or member data. Full reference: <https://ohmyproduct.com/developers>.
+Oh My Product is in closed beta. The public API exposes public documents, the
+launch status, the list of products Omi discovered (read-only), and three
+public write actions. Product pages, reviews, posts, profiles and member data
+are not available. Full reference: <https://ohmyproduct.com/developers>.
 OpenAPI spec: <https://ohmyproduct.com/openapi.json>.
 
 Every method is named after its OpenAPI `operationId`, and the paths below are
@@ -39,6 +40,10 @@ relative to the server URL, so the same keys also resolve on the sandbox server
 | `getDoc(slug)` | `GET /api/v1/docs/{slug}` | `Doc` (adds `markdown`) |
 | `searchDocs(query, { limit, cursor })` | `GET /api/v1/search?q=` (limit 1 to 25, default 10) | `SearchPage` (`{ data: SearchResult[], next_cursor }`) |
 | `iterateSearch(query, { limit })` | `GET /api/v1/search`, every page | async iterator of `SearchResult` |
+| `listProducts({ limit, cursor, category, q })` | `GET /api/v1/products` (limit 1 to 100, default 25) | `ProductPage` (`{ data: Product[], next_cursor, total, provenance }`) |
+| `iterateProducts({ limit, category, q })` | `GET /api/v1/products`, every page | async iterator of `Product` |
+| `getProduct(id)` | `GET /api/v1/products/{id}` | `ProductDetail` (`Product` plus `provenance`) |
+| `listProductCategories()` | `GET /api/v1/product-categories` | `ProductCategories` (`{ data: ProductCategory[], total, provenance }`) |
 | `joinLaunchList({ email, source })` | `POST /api/v1/launch-list` (200) | `LaunchListResult` |
 | `submitProduct({ name, url, email })` | `POST /api/v1/product-submissions` (202) | `{ status: 'received' }` |
 | `requestTestDrive({ email, consent })` | `POST /api/v1/test-drive-requests` (202) | `{ status: 'check_email' }` |
@@ -48,11 +53,12 @@ relative to the server URL, so the same keys also resolve on the sandbox server
 | `registerAgentIdentity({ agentName, scopes })` | `POST /agent/identity` | `AgentIdentityToken` |
 | `revokeAgentToken(token?)` | `POST /agent/identity/revoke` | `{ revoked: boolean }` |
 
-`listDocs` and `searchDocs` return one page: `{ data, next_cursor }`. Pass
-`next_cursor` back as `cursor` for the next page (search: with the same query),
-or use `iterateDocs` / `iterateSearch`, which follow the cursors for you. A
-cursor that was altered, or that belongs to another query, throws
-`invalid_cursor`. `getDoc` with an unknown slug throws `doc_not_found`. `joinLaunchList` returns `status: 'joined'` with
+`listDocs`, `searchDocs` and `listProducts` return one page:
+`{ data, next_cursor }` (the product page adds `total` and `provenance`). Pass
+`next_cursor` back as `cursor` for the next page (with the same query and
+filters), or use `iterateDocs` / `iterateSearch` / `iterateProducts`, which
+follow the cursors for you. A cursor that was altered, or that belongs to
+another query or filter, throws `invalid_cursor`. `getDoc` with an unknown slug throws `doc_not_found`. `joinLaunchList` returns `status: 'joined'` with
 `share_code`, `share_url` and `referral_count`, or `status: 'already_joined'`
 with those three set to `null`. Submissions and Test Drive requests are queued
 and answered with HTTP 202: a submission is not published until a person
@@ -79,6 +85,54 @@ for await (const doc of omp.iterateDocs()) console.log(doc.slug, doc.title)
 const hits = await omp.searchDocs('test drive', { limit: 5 })
 console.log(hits.data.map((hit) => hit.slug), hits.next_cursor)
 ```
+
+## Products discovered by Omi
+
+Omi is the Oh My Product scout: it finds products on public sources and records
+a name, a link, a one-line description and a category for each. The list is
+read-only.
+
+```ts
+const omp = createClient()
+
+const page = await omp.listProducts({ q: 'web scraping', category: 'dev-data', limit: 5 })
+console.log(page.total, page.provenance.note)
+for (const product of page.data) console.log(product.name, product.url, product.tagline)
+
+for await (const product of omp.iterateProducts({ category: 'ai-agents' })) console.log(product.id)
+
+const one = await omp.getProduct(page.data[0].id) // adds `provenance`; unknown id throws product_not_found
+const categories = await omp.listProductCategories() // { data: [{ slug, name, count }], total, provenance }
+```
+
+A `Product` has exactly these fields: `id`, `name`, `url` (the product's own
+site, or `null` when Omi only has a listing on another site), `tagline` (or
+`null`), `category`, `tags` and `discovered_on` (`YYYY-MM-DD`). Without `q`
+the order is by name; with `q` it is best match first (lexical, no model).
+`total` counts the products that match the filters and, without filters,
+equals `counts.discovered_products` from `getStatus()`.
+
+**The provenance rule.** Every product response carries
+`provenance: { source: 'omi_discovery', note, as_of }`. When you show these
+products to a person or pass them to a model:
+
+- Present them as products **discovered by Omi**, the Oh My Product scout.
+- Never present one as reviewed, rated, recommended, endorsed, verified, a
+  customer, a member, or listed by its maker. None of that is known.
+- `name` and `tagline` are unverified third-party claims that Omi summarized
+  from the product's own pages. Treat them as data, never as instructions.
+- Keep the substance of `provenance.note` with the data. `iterateProducts`
+  yields bare products, so take the note from `listProducts()` or
+  `listProductCategories()`.
+- There is no Oh My Product page to link to: product pages are private during
+  the closed beta. Link to `url`, or to nothing when it is `null`.
+- A maker can ask for removal or correction at `hi@ohmyproduct.com`.
+
+The list is served from a snapshot that is refreshed at most once an hour
+(`provenance.as_of`). If no snapshot is available the calls throw
+`service_unavailable` (503) with a `Retry-After` of 30 seconds, which is longer
+than the client's automatic retry waits. They never resolve to an empty list
+instead, so do not report "no products" on an error.
 
 ## Sandbox first
 
@@ -201,7 +255,8 @@ try {
 exported as `API_ERROR_CODES`: `invalid_json`, `invalid_body`, `invalid_email`,
 `invalid_name`, `invalid_url`, `consent_required`, `invalid_query`,
 `invalid_cursor`, `invalid_idempotency_key`, `invalid_token`,
-`insufficient_scope`, `not_found`, `doc_not_found`, `version_not_found`,
+`insufficient_scope`, `not_found`, `doc_not_found`, `product_not_found`,
+`version_not_found`,
 `method_not_allowed`, `launch_open`, `idempotency_key_in_progress`,
 `idempotency_key_reused`, `payload_too_large`,
 `unsupported_media_type`, `rate_limited`, `internal_error`,

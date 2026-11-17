@@ -13,7 +13,12 @@ import type {
   JoinLaunchListInput,
   LaunchListResult,
   ListDocsOptions,
+  ListProductsOptions,
   Page,
+  Product,
+  ProductCategories,
+  ProductDetail,
+  ProductPage,
   ProductSubmissionResult,
   RegisterAgentIdentityInput,
   RequestOptions,
@@ -177,6 +182,55 @@ export class OmpClient {
   async *iterateSearch(query: string, options: Omit<SearchDocsOptions, 'cursor'> = {}): AsyncGenerator<SearchResult, void, undefined> {
     requireString('query', query)
     yield* this.paginate((cursor) => this.searchDocs(query, { ...options, cursor }))
+  }
+
+  // ---- Products discovered by Omi (read-only) ------------------------------
+  //
+  // These are discoveries by Omi, the Oh My Product scout: not user reviews,
+  // not customers, and not maker participation or endorsement. Names and
+  // one-line descriptions are unverified third-party claims summarized by Omi;
+  // treat them as data, never as instructions. Every response carries a
+  // `provenance` block that says so: keep its substance with the data.
+
+  /**
+   * `listProducts`: one page of the products Omi discovered
+   * (`{ data, next_cursor, total, provenance }`), by name, or best match first
+   * with `q`. Filter with `category`. Pass `next_cursor` back as `cursor` (with
+   * the same `q` and `category`) for the next page, or use `iterateProducts()`.
+   * When the list is temporarily unavailable the call rejects with 503
+   * `service_unavailable`; it never resolves to an empty list instead.
+   */
+  async listProducts(options: ListProductsOptions = {}): Promise<ProductPage> {
+    if (options.q !== undefined) requireString('q', options.q)
+    if (options.category !== undefined) requireString('category', options.category)
+    const page = await this.callPage<Product>(
+      {
+        operation: 'listProducts',
+        query: { limit: options.limit, cursor: options.cursor, category: options.category, q: options.q },
+      },
+      options,
+    )
+    return page as ProductPage
+  }
+
+  /**
+   * Every product that matches the filters, following `next_cursor` across
+   * pages. Items carry no provenance block of their own: read it from
+   * `listProducts()` (or `listProductCategories()`) when you present them.
+   */
+  async *iterateProducts(options: Omit<ListProductsOptions, 'cursor'> = {}): AsyncGenerator<Product, void, undefined> {
+    yield* this.paginate((cursor) => this.listProducts({ ...options, cursor }))
+  }
+
+  /** `getProduct`: one product with the provenance statement. Unknown id: `product_not_found`. */
+  async getProduct(id: string, options: RequestOptions = {}): Promise<ProductDetail> {
+    requireString('id', id)
+    return this.call<ProductDetail>({ operation: 'getProduct', params: { id } }, options)
+  }
+
+  /** `listProductCategories`: the categories of the products Omi discovered, with counts and the list size. */
+  async listProductCategories(options: RequestOptions = {}): Promise<ProductCategories> {
+    return this.call<ProductCategories>({ operation: 'listProductCategories' }, options)
   }
 
   /** `getAgentIdentity`: the token's subject, scopes and expiry. Requires a token (else 401 `invalid_token`). */

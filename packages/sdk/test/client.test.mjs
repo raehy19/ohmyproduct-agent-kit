@@ -147,6 +147,114 @@ test('iterateSearch: keeps the same q on every page', async () => {
   assert.deepEqual(f.calls.map((c) => new URL(c.url).searchParams.get('q')), ['beta testers', 'beta testers'])
 })
 
+// ---- Products discovered by Omi ---------------------------------------------
+
+const PROVENANCE = {
+  source: 'omi_discovery',
+  note: 'Products discovered by Omi, the Oh My Product scout, from public sources. They are not user reviews, not customers of Oh My Product, and not maker participation or endorsement.',
+  as_of: '2026-11-16T03:00:00.000Z',
+}
+const product = (id, extra = {}) => ({
+  id,
+  name: id,
+  url: `https://${id}.example.com`,
+  tagline: 'A sample product',
+  category: 'dev-data',
+  tags: ['sample'],
+  discovered_on: '2026-09-23',
+  ...extra,
+})
+
+test('listProducts: sends limit, cursor, category and q; returns the page with total and provenance', async () => {
+  const page = { data: [product('crawlkit-434b6c'), product('listed-only-5c6d7e', { url: null, tagline: null })], next_cursor: 'c1', total: 12, provenance: PROVENANCE }
+  const f = mockFetch(json(page))
+  const client = createClient({ fetch: f })
+  const result = await client.listProducts({ limit: 2, category: 'dev-data', q: 'web scraping' })
+  assert.deepEqual(result, page)
+  assert.equal(result.provenance.source, 'omi_discovery')
+  assert.equal(result.total, 12)
+  assert.equal(result.data[1].url, null)
+  const url = new URL(f.calls[0].url)
+  assert.equal(url.pathname, '/api/v1/products')
+  assert.equal(url.searchParams.get('limit'), '2')
+  assert.equal(url.searchParams.get('category'), 'dev-data')
+  assert.equal(url.searchParams.get('q'), 'web scraping')
+  assert.equal(url.searchParams.has('cursor'), false)
+  assert.equal(f.calls[0].init.method, 'GET')
+  // A read: no sandbox header, no Idempotency-Key, no body.
+  assert.equal(f.calls[0].headers['X-OMP-Sandbox'], undefined)
+  assert.equal(f.calls[0].headers['Idempotency-Key'], undefined)
+  assert.equal(f.calls[0].init.body, undefined)
+  await client.listProducts({ cursor: 'c1' })
+  assert.equal(new URL(f.calls[1].url).search, '?cursor=c1')
+  await client.listProducts()
+  assert.equal(new URL(f.calls[2].url).search, '')
+  await assert.rejects(client.listProducts({ q: '  ' }), TypeError)
+  await assert.rejects(client.listProducts({ category: '' }), TypeError)
+  // Anything that is not a page is a broken response, never an empty list.
+  for (const body of [[product('a')], { products: [] }, { data: [], next_cursor: 5 }]) {
+    const broken = createClient({ fetch: mockFetch(json(body)) })
+    await assert.rejects(broken.listProducts(), (e) => e instanceof OmpApiError && e.code === 'invalid_response')
+  }
+})
+
+test('iterateProducts: follows next_cursor with the same filters and stops at null', async () => {
+  const f = mockFetch(
+    json({ data: [product('a'), product('b')], next_cursor: 'c1', total: 3, provenance: PROVENANCE }),
+    json({ data: [product('c')], next_cursor: null, total: 3, provenance: PROVENANCE }),
+  )
+  const ids = []
+  for await (const p of createClient({ fetch: f }).iterateProducts({ limit: 2, category: 'dev-data', q: 'crawler' })) ids.push(p.id)
+  assert.deepEqual(ids, ['a', 'b', 'c'])
+  assert.deepEqual(f.calls.map((c) => new URL(c.url).searchParams.get('cursor')), [null, 'c1'])
+  for (const call of f.calls) {
+    const params = new URL(call.url).searchParams
+    assert.equal(params.get('limit'), '2')
+    assert.equal(params.get('category'), 'dev-data')
+    assert.equal(params.get('q'), 'crawler')
+  }
+})
+
+test('getProduct: encodes the id, returns the product with provenance, maps product_not_found', async () => {
+  const detail = { ...product('crawlkit-434b6c'), provenance: PROVENANCE }
+  const f = mockFetch(json(detail), json(errorEnvelope('product_not_found'), { status: 404 }))
+  const client = createClient({ fetch: f })
+  assert.deepEqual(await client.getProduct('crawlkit-434b6c'), detail)
+  assert.equal(f.calls[0].url, `${BASE}/products/crawlkit-434b6c`)
+  const err = await client.getProduct('a/b c').catch((e) => e)
+  assert.equal(f.calls[1].url, `${BASE}/products/a%2Fb%20c`)
+  assert.ok(err instanceof OmpApiError)
+  assert.equal(err.status, 404)
+  assert.equal(err.code, 'product_not_found')
+  assert.ok(API_ERROR_CODES.includes('product_not_found'))
+  await assert.rejects(client.getProduct(''), TypeError)
+})
+
+test('listProductCategories: GET /product-categories with counts, total and provenance', async () => {
+  const body = { data: [{ slug: 'dev-data', name: 'Development & data', count: 3 }], total: 3, provenance: PROVENANCE }
+  const f = mockFetch(json(body))
+  assert.deepEqual(await createClient({ fetch: f }).listProductCategories(), body)
+  assert.equal(f.calls[0].url, `${BASE}/product-categories`)
+  assert.equal(f.calls[0].init.method, 'GET')
+})
+
+test('an unavailable product list rejects with service_unavailable instead of resolving to an empty list', async () => {
+  // The API answers 503 with Retry-After: 30, which is longer than the client waits, so there is no retry.
+  const f = mockFetch(json(errorEnvelope('service_unavailable'), { status: 503, headers: { 'retry-after': '30' } }))
+  const client = createClient({ fetch: f })
+  const err = await client.listProducts().catch((e) => e)
+  assert.ok(err instanceof OmpApiError)
+  assert.equal(err.code, 'service_unavailable')
+  assert.equal(err.retryable, true)
+  assert.equal(err.retryAfterMs, 30_000)
+  assert.equal(f.calls.length, 1)
+  const ids = []
+  await assert.rejects(async () => {
+    for await (const p of client.iterateProducts()) ids.push(p.id)
+  }, (e) => e instanceof OmpApiError && e.code === 'service_unavailable')
+  assert.deepEqual(ids, [])
+})
+
 test('getAgentAuth: GET /agent/auth with the bearer token', async () => {
   const identity = { subject: 'agt_x', identity_type: 'anonymous', agent_name: null, scopes: ['docs:read'], issued_at: 'a', expires_at: 'b' }
   const f = mockFetch(json(identity))

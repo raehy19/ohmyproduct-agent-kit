@@ -67,9 +67,12 @@ Other ways to read the same content:
 
 ## Rules
 
-- Public data only. There is no catalog, post, profile or member data in the
-  API while the beta is closed. If a question needs that data, say it is not
-  available.
+- Public data only. While the beta is closed, the API has no product pages,
+  reviews, posts, profiles or member data. If a question needs that data, say
+  it is not available. The one exception is the read-only list of products
+  that Omi, the site's scout, discovered: use the `omp-find-products` skill
+  for it, and present its entries as Omi discoveries, never as reviews or
+  maker listings.
 - On a 429 or 503, wait for the `Retry-After` header and retry once.
 - Error bodies have the shape `{"error":{"code","message","hint","docs","request_id"}}`.
   Report the `code` and `request_id` when something fails.

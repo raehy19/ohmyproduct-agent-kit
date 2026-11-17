@@ -10,10 +10,17 @@ agents and scripts with the public
 > [Using the packages from source](#using-the-packages-from-source).
 
 Oh My Product is in closed beta. The public API covers public documents, the
-launch status, and three public write actions (join the launch list, submit a
-product for private review, request a Test Drive). It has no catalog, post,
-profile or member data. See [AGENTS.md](AGENTS.md) for the full boundary and
-the rules agents must follow.
+launch status, the read-only list of products discovered by Omi (the site's
+product scout), and three public write actions (join the launch list, submit a
+product for private review, request a Test Drive). It has no product pages,
+reviews, posts, profiles or member data. See [AGENTS.md](AGENTS.md) for the
+full boundary and the rules agents must follow.
+
+The products are **discoveries by Omi**, not user reviews, customers or maker
+participation, and their names and one-line descriptions are unverified
+third-party claims. Agents must present them as Omi discoveries, never as
+reviewed, endorsed or listed by their makers. A maker can ask for removal or
+correction at `hi@ohmyproduct.com`.
 
 ## Contents
 
@@ -46,6 +53,7 @@ the rules agents must follow.
 | --- | --- |
 | `omp-read-docs` | Read and search the public docs |
 | `omp-check-launch-status` | Read the live launch state |
+| `omp-find-products` | Find products discovered by Omi (read-only), and present them as discoveries |
 | `omp-join-launch-list` | Join the launch list, sandbox first |
 | `omp-submit-product` | Submit a product for private review, sandbox first |
 | `omp-request-test-drive` | Request a Test Drive email, sandbox first, with consent |
@@ -54,7 +62,7 @@ the rules agents must follow.
 Install them with the [Skills CLI](https://skills.sh):
 
 ```sh
-npx skills add raehy19/ohmyproduct-agent-kit --list                     # show the six skills
+npx skills add raehy19/ohmyproduct-agent-kit --list                     # show the seven skills
 npx skills add raehy19/ohmyproduct-agent-kit                            # install, choosing skills and agents
 npx skills add raehy19/ohmyproduct-agent-kit --skill omp-read-docs      # one skill
 ```
@@ -116,6 +124,7 @@ cd ohmyproduct-agent-kit
 
 node packages/cli/dist/bin.js status
 node packages/cli/dist/bin.js docs search "beta testers"
+node packages/cli/dist/bin.js products search "web scraping" --limit 5
 node packages/cli/dist/bin.js launch-list join you@example.com --sandbox
 ```
 
