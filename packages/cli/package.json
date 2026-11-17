@@ -1,0 +1,58 @@
+{
+  "name": "ohmyproduct",
+  "version": "0.1.0",
+  "description": "Command line client for the Oh My Product public API: docs, launch status, launch list, product submissions and Test Drive requests.",
+  "keywords": [
+    "ohmyproduct",
+    "oh-my-product",
+    "cli",
+    "agents"
+  ],
+  "license": "MIT",
+  "type": "module",
+  "bin": {
+    "omp": "./dist/bin.js",
+    "ohmyproduct": "./dist/bin.js"
+  },
+  "main": "./dist/cli.js",
+  "types": "./dist/cli.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/cli.d.ts",
+      "import": "./dist/cli.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/raehy19/ohmyproduct-agent-kit.git",
+    "directory": "packages/cli"
+  },
+  "homepage": "https://ohmyproduct.com/developers",
+  "bugs": {
+    "url": "https://github.com/raehy19/ohmyproduct-agent-kit/issues"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "clean": "node -e \"require('node:fs').rmSync('dist',{recursive:true,force:true})\"",
+    "build": "npm run clean && tsc -p tsconfig.json && node -e \"require('node:fs').chmodSync('dist/bin.js',0o755)\"",
+    "test": "npm run build && node --test test/*.test.mjs",
+    "prepublishOnly": "node scripts/check-sdk-dependency.mjs && npm test"
+  },
+  "dependencies": {
+    "@ohmyproduct/sdk": "file:../sdk"
+  },
+  "devDependencies": {
+    "@types/node": "^20.14.0",
+    "typescript": "^5.6.0"
+  }
+}

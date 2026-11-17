@@ -1,0 +1,15 @@
+{
+  "name": "ohmyproduct-agent-kit",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Skills, rules and MCP configuration for integrating AI coding agents with the Oh My Product public API.",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/raehy19/ohmyproduct-agent-kit.git"
+  },
+  "homepage": "https://ohmyproduct.com/developers",
+  "bugs": {
+    "url": "https://github.com/raehy19/ohmyproduct-agent-kit/issues"
+  }
+}

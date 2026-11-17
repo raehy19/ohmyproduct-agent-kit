@@ -1,0 +1,53 @@
+{
+  "name": "@ohmyproduct/sdk",
+  "version": "0.1.0",
+  "description": "Typed client for the Oh My Product public API (docs, launch status, launch list, product submissions, Test Drive requests).",
+  "keywords": [
+    "ohmyproduct",
+    "oh-my-product",
+    "api-client",
+    "sdk",
+    "agents"
+  ],
+  "license": "MIT",
+  "type": "module",
+  "sideEffects": false,
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/raehy19/ohmyproduct-agent-kit.git",
+    "directory": "packages/sdk"
+  },
+  "homepage": "https://ohmyproduct.com/developers",
+  "bugs": {
+    "url": "https://github.com/raehy19/ohmyproduct-agent-kit/issues"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "clean": "node -e \"require('node:fs').rmSync('dist',{recursive:true,force:true})\"",
+    "build": "npm run clean && tsc -p tsconfig.json",
+    "test": "npm run build && node --test test/*.test.mjs",
+    "prepublishOnly": "npm test",
+    "sync:openapi": "node scripts/sync-openapi.mjs"
+  },
+  "devDependencies": {
+    "typescript": "^5.6.0"
+  }
+}

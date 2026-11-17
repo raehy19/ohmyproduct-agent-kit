@@ -1,0 +1,8 @@
+# Shipped to the public repository.
+node_modules/
+dist/
+*.tgz
+.DS_Store
+
+# Keep skills/ tracked even where a parent ignore file excludes it.
+!skills/

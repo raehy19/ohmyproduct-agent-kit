@@ -1,0 +1,52 @@
+# Oh My Product integration rules
+
+Oh My Product (https://ohmyproduct.com) is in closed beta. Its public API is
+small. Full guidance: AGENTS.md. Docs: https://ohmyproduct.com/developers
+
+What exists
+- REST API: https://ohmyproduct.com/api/v1 (spec: https://ohmyproduct.com/openapi.json)
+- Sandbox base: https://ohmyproduct.com/api/sandbox/v1 (same operations; every
+  write is sandboxed, nothing stored or sent)
+- Operations: getApiRoot, getStatus, listDocs, getDoc, searchDocs,
+  joinLaunchList, submitProduct, requestTestDrive, getAgentIdentity, and the
+  identity endpoints (POST https://ohmyproduct.com/agent/identity with
+  {"type":"anonymous"}, POST /agent/identity/revoke, GET /agent/auth)
+- MCP servers: https://ohmyproduct.com/mcp (product) and
+  https://ohmyproduct.com/mcp/docs (documentation); check they answer
+  initialize before relying on them
+- LLM index: https://ohmyproduct.com/llms.txt
+- SDK @ohmyproduct/sdk and CLI "omp" in packages/ of this repo; not yet on
+  npm, so build them from source (README, "Using the packages from source")
+
+Boundary
+- Public data only: launch status, public docs, one public aggregate count.
+- No catalog, post, profile or member data. Do not scrape for it.
+- Three public writes only: join launch list, submit product (private review),
+  request Test Drive.
+- No launch date is announced. Say "coming soon". Never guess a date.
+
+Rules
+- Sandbox first: build against https://ohmyproduct.com/api/sandbox/v1, or send
+  X-OMP-Sandbox: true (or ?sandbox=true) on a write to /api/v1. Same status and
+  fields as a real answer, plus "sandbox": true; nothing is stored or sent.
+  Switch to /api/v1 without the flag only for a real, user-confirmed action.
+  Writes need Content-Type: application/json.
+- Send an Idempotency-Key (a fresh UUID per action) on every write and reuse it
+  only to retry that same request; a replay answers Idempotent-Replayed: true.
+- listDocs and searchDocs return {data, next_cursor}. Follow next_cursor (pass
+  it back as ?cursor=) until it is null; never build or parse cursors.
+- Never fabricate reviews, ratings, users, accounts, products, emails or
+  consent. Never submit test data to live endpoints.
+- Use an email only when its owner asked. consent: true only when they agreed.
+  One address per explicit request; no loops over people.
+- Read the docs and live status instead of answering from memory.
+- /api/v1 errors are {"error":{"code","message","hint","docs","request_id"}}.
+  Branch on code, show hint, keep request_id. The /agent/identity endpoints
+  answer {"error","error_description","error_uri","request_id"} instead.
+- Write answers: joinLaunchList 200 {status: joined|already_joined, share_code,
+  share_url, referral_count}; submitProduct 202 {status: received};
+  requestTestDrive 202 {status: check_email}. 202 means accepted for review,
+  not published.
+- A bad or expired bearer token gets 401 invalid_token on every /api/v1 call,
+  public ones too. Send no Authorization header unless you have a valid token.
+- On 429/503 honor Retry-After and retry at most once.

@@ -1,0 +1,42 @@
+name: Publish npm package
+
+# Manual only. Publishes one package from this repository with npm provenance.
+# Requires the repository secret NPM_TOKEN (an npm automation token). Publish
+# the SDK before the CLI: the CLI depends on the published SDK version.
+
+on:
+  workflow_dispatch:
+    inputs:
+      package:
+        description: Package directory to publish
+        required: true
+        type: choice
+        options:
+          - sdk
+          - cli
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: packages/${{ inputs.package }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          registry-url: https://registry.npmjs.org
+      - name: Build the SDK first when publishing the CLI
+        if: inputs.package == 'cli'
+        working-directory: packages/sdk
+        run: npm install && npm run build
+      - run: npm install
+      - run: npm test
+      - run: npm publish --provenance --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
