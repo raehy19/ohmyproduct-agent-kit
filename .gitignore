@@ -6,3 +6,6 @@ dist/
 
 # Keep skills/ tracked even where a parent ignore file excludes it.
 !skills/
+
+# Lockfiles are not published; each package installs from its package.json.
+package-lock.json
